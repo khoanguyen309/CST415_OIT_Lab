@@ -2,6 +2,7 @@ package com.common.server;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -13,7 +14,8 @@ public class Main
 			ListeningClientThread server = new ListeningClientThread();
 			server.start();
 			try {
-				server.join();
+				if (server.isAlive())
+					server.join();
 			}
 			catch(Exception error) {
 				System.out.println(error.getMessage());
@@ -43,10 +45,10 @@ public class Main
 		public void run() {
 			int numOfClients = 0;
 			
-			while (numOfClients < 1) {
+			while (numOfClients < 2) {
 				try {
 					Socket client = serverSocket.accept();
-					ReceivingThread receiver = new ReceivingThread(client);
+					ReceivingThread receiver = new ReceivingThread(numOfClients + 1, client);
 					receiver.start();
 					clientsThread.add(receiver);
 					++numOfClients;
@@ -84,20 +86,24 @@ public class Main
 	protected static class ReceivingThread extends Thread
 	{
 		private int cnt;
+		private int ClientID;
 		private Socket socket;
-		private DataInputStream input;
-		private DataOutputStream output;
 		private Message response;
+		private PrintWriter writer;
+		private DataInputStream input;
+		private DataOutputStream output;		
 		
-		public ReceivingThread(Socket socket) {
-			cnt = 0;
+		public ReceivingThread(int ClientID, Socket socket) {
+			this.cnt = 0;
+			this.ClientID = ClientID;
 			this.socket = socket;
 			try {
+				writer = new PrintWriter("Lab3.Scenario2.NguyenK317_Client_" + ClientID + ".txt");
 				input = new DataInputStream(socket.getInputStream());
 				output = new DataOutputStream(socket.getOutputStream());
 				response = new Message();
 				response.ClientPort = Integer.toString(socket.getPort());
-				response.SocketNumber = "1";
+				response.SocketNumber = Integer.toString(ClientID + 1);
 				response.ServerIP = socket.getLocalAddress().toString().substring(1);
 				response.ServerPort = Integer.toString(socket.getLocalPort());
 				response.Message = "OIT-Good-Req";
@@ -111,13 +117,16 @@ public class Main
 		@Override
 		public void run() {
 			long reqBeginTime = new Date().getTime();
-			
+			int bytesRead = 0;
+			writer.println("Client: " + ClientID);
 			while(cnt < 10000) {
 				try {
 					byte[] buffer = new byte[1024];
-					while((input.read(buffer, 0, input.available())) == 0);
+					while((input.read(buffer, 0, (bytesRead = input.available()))) == 0);
 					String receive = new String(buffer);
 					System.out.println(receive);
+					writer.write(receive, 0, bytesRead);
+					writer.println();
 					ProcessInput(receive);
 					++cnt;
 				}
@@ -126,20 +135,18 @@ public class Main
 				}
 			}
 			
-			cancel();
-			long reqEndTime = new Date().getTime();
-			System.out.println("Req. run duration (ms): " + (reqEndTime - reqBeginTime));
-		}
-		
-		public void cancel() {
 			try {
 				socket.shutdownInput();
 				socket.shutdownOutput();
 				socket.close();
+				writer.close();
 			}
 			catch(Exception error) {
 				System.out.println(error.getMessage());
 			}
+			
+			long reqEndTime = new Date().getTime();
+			System.out.println("Req. run duration (ms): " + (reqEndTime - reqBeginTime));
 		}
 		
 		private void ProcessInput(String data) {
@@ -151,6 +158,8 @@ public class Main
 				response.StudentID = parts[4];
 				response.ClientIP = parts[6];								
 				output.write(response.toString().getBytes());
+				writer.write(response.toString(),0, response.toString().length());
+				writer.println();
 			}
 			catch(Exception error) {
 				System.out.println(error.getMessage());
